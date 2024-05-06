@@ -180,7 +180,8 @@ static struct xsk_info *create_xsk_info(struct user_opt *opt, struct pkt_buffer 
 	if (ret)
 		afxdp_exit_with_error(-ret);
 
-	ret = bpf_xdp_query_id(opt->ifindex, opt->x_opt.xdp_flags, &temp_xsk->prog_id);
+	// ret = bpf_xdp_query_id(opt->ifindex, opt->x_opt.xdp_flags, &temp_xsk->prog_id);
+	ret = bpf_get_link_xdp_id(opt->ifindex, &temp_xsk->prog_id, opt->x_opt.xdp_flags);
 	if (ret)
 		afxdp_exit_with_error(-ret);
 
