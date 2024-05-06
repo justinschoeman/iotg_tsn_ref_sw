@@ -182,7 +182,13 @@ int init_tx_socket(struct user_opt *opt, int *sockfd,
 
 /* Thread which creates a socket on a specified priority and continuously
  * loops to send packets. Main thread may call multiples of this thread.
+ *
+ * JFS - misuse early_offset_ns to test taprio offloading
+ * 1) set exec time this much earlier
+ * 2) set packet timestamp to expected transmission time
+ *
  */
+
 void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk_addr)
 {
 	struct custom_payload *payload;
@@ -212,6 +218,7 @@ void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk
 	
 	looping_ts = get_time_sec(CLOCK_REALTIME) + (2 * NSEC_PER_SEC);
 	looping_ts += opt->offset_ns;
+	looping_ts -= opt->early_offset_ns;
 	ts.tv_sec = looping_ts / NSEC_PER_SEC;
 	ts.tv_nsec = looping_ts % NSEC_PER_SEC;
 
@@ -229,7 +236,11 @@ void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk
 			break;
 		}
 
-		tx_timestampA = get_time_nanosec(CLOCK_REALTIME);
+		if(opt->early_offset_ns > 0) {
+			tx_timestampA = looping_ts + opt->early_offset_ns;
+		} else {
+			tx_timestampA = get_time_nanosec(CLOCK_REALTIME);
+		}
 
 		memcpy(&payload->seq, &seq, sizeof(uint32_t));
 		memcpy(&payload->tx_timestampA, &tx_timestampA, sizeof(uint64_t));
