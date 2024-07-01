@@ -182,13 +182,7 @@ int init_tx_socket(struct user_opt *opt, int *sockfd,
 
 /* Thread which creates a socket on a specified priority and continuously
  * loops to send packets. Main thread may call multiples of this thread.
- *
- * JFS - misuse early_offset_ns to test taprio offloading
- * 1) set exec time this much earlier
- * 2) set packet timestamp to expected transmission time
- *
  */
-
 void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk_addr)
 {
 	struct custom_payload *payload;
@@ -218,7 +212,6 @@ void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk
 	
 	looping_ts = get_time_sec(CLOCK_REALTIME) + (2 * NSEC_PER_SEC);
 	looping_ts += opt->offset_ns;
-	looping_ts -= opt->early_offset_ns;
 	ts.tv_sec = looping_ts / NSEC_PER_SEC;
 	ts.tv_nsec = looping_ts % NSEC_PER_SEC;
 
@@ -236,11 +229,7 @@ void afpkt_send_thread(struct user_opt *opt, int *sockfd, struct sockaddr_ll *sk
 			break;
 		}
 
-		if(opt->early_offset_ns > 0) {
-			tx_timestampA = looping_ts + opt->early_offset_ns;
-		} else {
-			tx_timestampA = get_time_nanosec(CLOCK_REALTIME);
-		}
+		tx_timestampA = get_time_nanosec(CLOCK_REALTIME);
 
 		memcpy(&payload->seq, &seq, sizeof(uint32_t));
 		memcpy(&payload->tx_timestampA, &tx_timestampA, sizeof(uint64_t));
@@ -545,7 +534,8 @@ int afpkt_recv_pkt(int sock, struct user_opt *opt)
 
 	memset(&msg, 0, sizeof(msg));
 	iov.iov_base = buffer;
-	iov.iov_len = 128; //TODO: use correct length based on VLAN header
+	//iov.iov_len = 128; //TODO: use correct length based on VLAN header
+	iov.iov_len = MSG_BUFLEN;
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
 	msg.msg_name = &host_address;
@@ -554,9 +544,10 @@ int afpkt_recv_pkt(int sock, struct user_opt *opt)
 	msg.msg_controllen = 128;
 
 	/* Use non-blocking recvmsg to poll for packets, do nothing if none */
-	ret = recvmsg(sock, &msg, MSG_DONTWAIT);
+	// ret = recvmsg(sock, &msg, MSG_DONTWAIT);
+	ret = recvmsg(sock, &msg, 0);
 	if (ret <= 0) {
-		usleep(1); /*No message in buffer, do nothing*/
+		// usleep(1); /*No message in buffer, do nothing*/
 		return 0;
 	}
 	rx_timestampD = get_time_nanosec(CLOCK_REALTIME);
@@ -584,13 +575,14 @@ int afpkt_recv_pkt(int sock, struct user_opt *opt)
 	/* Result format:
 	 *   u2u latency, seq, queue, user txtime, hw rxtime, user rxtime
 	 */
-	fprintf(stdout, "%ld\t%d\t%d\t%ld\t%ld\t%ld\n",
+	fprintf(stdout, "%ld\t%d\t%d\t%ld\t%ld\t%ld\t%ld\n",
 			rx_timestampD - payload->tx_timestampA,
 			payload->seq,
 			payload->tx_queue,
 			payload->tx_timestampA,
 			rx_timestampC,
-			rx_timestampD);
+			rx_timestampD,
+			37000000000L+rx_timestampD-rx_timestampC-(ret*8));
 	fflush(stdout);
 	glob_rx_seq = payload->seq;
 
